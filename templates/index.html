@@ -131,6 +131,9 @@
             socket.emit("add_relation", {'mac':mac, 'ip':ip});
           }
         });
+        $('#start_server_button').click(function(){
+            socket.emit("start_server", {});
+        });
       });
     </script>
   </head>
@@ -158,6 +161,14 @@
     <main role="main" class="container">
       <h1 class="mt-5">CCS BOOTP / DHCP Server</h1>
       <p class="lead">Enter relations while DHCP requests come in. Be sure to copy the MAC address correctly.</p>
+
+      <div>
+        <h3 class="mt-5">System Status</h3>
+        <div class="container">
+          <p id="system_status">{{ server_status }}</p>
+          <input type="button" class="btn btn-primary" value="Start Server" id="start_server_button">
+        </div>
+      </div>
 
       <div>
         <h2 class="mt-5">MAC / IP Relations</h2>
@@ -220,13 +231,6 @@
         </div>
       </div>
       
-      <div>
-        <h3 class="mt-5">System Status</h3>
-        <div class="container">
-          <p id="system_status">{{ status }}</p>
-        </div>
-      </div>
-
       <div>
         <h3 class="mt-5">System Log</h3>
         <div class="container">
