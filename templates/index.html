@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <meta name="description" content="">
+    <meta name="author" content="">
+    <!--<link rel="icon" href="/docs/4.0/assets/img/favicons/favicon.ico">-->
+
+    <title>{{ title }}</title>
+
+    <link rel="canonical" href="https://getbootstrap.com/docs/4.0/examples/sticky-footer-navbar/">
+
+    <!-- Bootstrap core CSS -->
+    <link href="/static/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- Custom styles for this template -->
+    <link href="/static/dist/css/sticky-footer-navbar.css" rel="stylesheet">
+    <script src="/static/js/jquery.min.js" integrity="sha512-bLT0Qm9VnAYZDflyKcBaQ2gg0hSYNQrJ8RilYldYQ1FxQYoCLtUjuuRuZo+fjqhx/qtq/1itJ0C2ejDxltZVFg==" crossorigin="anonymous"></script>
+    <script src="/static/js/socket.io.js" integrity="sha512-aMGMvNYu8Ue4G+fHa359jcPb1u+ytAF+P2SCb+PxrjCdO3n3ZTxJ30zuH39rimUggmTwmh2u7wvQsDTHESnmfQ==" crossorigin="anonymous"></script>
+    
+    <script type="text/javascript", charset="utf-8">
+      $(document).ready(function(){
+
+        // Connect to the Socket.IO Server.
+        // The connection URL has the following format, relative to the current page:
+        // http[s]://<domain>:<port>[/<namespace>]
+        var socket = io();
+
+        // Event handler for new browser connections
+        // The callback function is invoked when a connection with the
+        // server is established
+        socket.on('connect', function(){
+            socket.emit('browser_connectd', {data: 'I am connected'});
+        });
+
+        // Event handler for server sent data.
+        // The callback function is invoked whenever the server emits data
+        // to the client.
+        // The data is parsed and the DOM is updated for the event that 
+        // took place.
+        socket.on('server_event', function(msg){
+            console.log(msg['data']);
+            var log = document.getElementById("log");
+            log.innerHTML = log.innerHTML + "\n" + msg['data'];
+        });
+
+        // Event to handle the server start
+        // clears the server log
+        socket.on('server_start', function(){
+            var log = document.getElementById("log");
+            log.innerHTML = "";
+        });
+
+        socket.on("update_server_status", function(msg){
+            var sys_status = document.getElementById("system_status");
+            sys_status.innerHTML = msg.data;
+        });
+            
+        // Event to handle the server requesting
+        // that the table should be updated.
+        socket.on('update_table', function(msg){
+            console.log(msg);
+            if(msg.table == 'relation'){
+                
+                // gets the table object
+                var table = document.getElementById("relation_table");
+
+                // gets the row count of the table currently
+                var row_count = table.rows.length;
+
+                // if the message row is equal to the current
+                // row count, then a row needs to be added
+                // else, it will update the row with the data
+                if(msg.row >= row_count){
+                    var row = table.insertRow(msg.row);
+                    var mac_cell = row.insertCell(0);
+                    var ip_cell = row.insertCell(1);
+                    var assigned_cell = row.insertCell(2);
+                    mac_cell.innerHTML = msg.data.mac;
+                    ip_cell.innerHTML = msg.data.ip;
+                    assigned_cell.innerHTML = msg.data.assigned;
+                }
+                else{
+                    var row = table.rows[msg.row];
+                    var mac_cell = row.cells[0];
+                    var ip_cell = row.cells[1];
+                    var assigned_cell = row.cells[2];
+                    mac_cell.innerHTML = msg.data.mac;
+                    ip_cell.innerHTML = msg.data.ip;
+                    assigned_cell.innerHTML = msg.data.assigned;
+                }
+
+            }
+            else if(msg.table == 'request'){
+                
+                // gets the table object
+                var table = document.getElementById("request_table");
+
+                var row_count = table.rows.length;
+
+                if(msg.row >= row_count){
+                    var row = table.insertRow(msg.row);
+                    var mac_cell = row.insertCell(0);
+                    var count_cell = row.insertCell(1);
+                    var ip_cell = row.insertCell(2);
+                    mac_cell.innerHTML = msg.data.mac;
+                    count_cell.innerHTML = msg.data.count;
+                    ip_cell.innerHTML = msg.data.ip;
+                }
+                else{
+                    var row = table.rows[msg.row];
+                    var mac_cell = row.cells[0];
+                    var count_cell = row.cells[1];
+                    var ip_cell = row.cells[2];
+                    mac_cell.innerHTML = msg.data.mac;
+                    count_cell.innerHTML = msg.data.count;
+                    ip_cell.innerHTML = msg.data.ip;
+                }
+            }
+            else{
+                // don't do anything
+                console.log("Unsupported Table: " + msg.table)
+            }
+        });
+
+        $('#add_relation_button').click(function(){
+          var mac = document.getElementById("mac_address_input").value;
+          var ip = document.getElementById("ip_address_input").value;
+          if((mac != "") && (ip != "")){
+            socket.emit("add_relation", {'mac':mac, 'ip':ip});
+          }
+        });
+      });
+    </script>
+  </head>
+
+  <body>
+
+    <header>
+      <!-- Fixed navbar -->
+      <nav class="navbar navbar-expand-md navbar-dark fixed-top bg-dark">
+        <a class="navbar-brand" href="#">CCS</a>
+        <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarCollapse" aria-controls="navbarCollapse" aria-expanded="false" aria-label="Toggle navigation">
+          <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarCollapse">
+          <ul class="navbar-nav mr-auto">
+            <li class="nav-item active">
+              <a class="nav-link" href="#">Home <span class="sr-only">(current)</span></a>
+            </li>
+          </ul>
+        </div>
+      </nav>
+    </header>
+
+    <!-- Begin page content -->
+    <main role="main" class="container">
+      <h1 class="mt-5">CCS BOOTP / DHCP Server</h1>
+      <p class="lead">Enter relations while DHCP requests come in. Be sure to copy the MAC address correctly.</p>
+
+      <div>
+        <h2 class="mt-5">MAC / IP Relations</h2>
+        <div class="container">
+          <table id="relation_table" class="table">
+            <tr>
+              <th>Mac Address</th>
+              <th>IP Address</th>
+              <th>Assigned</th>
+            </tr>
+            <tr>
+              <td>
+                <input id="mac_address_input" class="form-control" type="text" placeholder="Enter MAC Address">
+              </td>
+              <td>
+                <input id="ip_address_input" class="form-control" type="text" placeholder="Enter IP Address">
+              </td>
+              <td>
+                <input type="button" class="btn btn-primary" value="Add" id="add_relation_button">
+              </td>
+              {% if relations %}
+                {% for r in relations %}
+                  {% if r.mac != 'reserved' %}
+                    <tr>
+                      <td>{{ r.mac }}</td>
+                      <td>{{ r.ip }}</td>
+                      <td>{{ r.assigned }}</td>
+                    </tr>
+                  {% endif %}
+                {% endfor %}
+              {% endif %}
+            </tr>
+          </table>
+        </div>
+      </div>
+      
+      <div>
+        <h2 class="mt-5">Client Requests</h2>
+        <div class="container">
+          <table id="request_table" class="table">
+            <tr>
+              <th>Mac Address</th>
+              <th>Request Count</th>
+              <th>IP Address Assigned</th>
+            </tr>
+            {% if requests %}
+              {% for req in requests %}
+                <tr>
+                  <td>{{ req.mac }}</td>
+                  <td>{{ req.count }}</td>
+                  {% if req.ip %}
+                    <td>{{ req.ip }}</td>
+                  {% else %}
+                    <td></td>
+                  {% endif %}
+                </tr>
+              {% endfor %}
+            {% endif %}
+          </table>
+        </div>
+      </div>
+      
+      <div>
+        <h3 class="mt-5">System Status</h3>
+        <div class="container">
+          <p id="system_status">{{ status }}</p>
+        </div>
+      </div>
+
+      <div>
+        <h3 class="mt-5">System Log</h3>
+        <div class="container">
+          <textarea id="log" rows="20" placeholder="System Status Window" style="width:100%" wrap="hard"></textarea>
+        </div>
+      </div>
+
+
+    </main>
+
+    <footer class="footer">
+      <div class="container">
+        <span class="text-muted">{{ title }}</span>
+      </div>
+    </footer>
+
+    <!-- Bootstrap core JavaScript
+    ================================================== -->
+    <!-- Placed at the end of the document so the pages load faster -->
+    <!--<script src="https://code.jquery.com/jquery-3.2.1.slim.min.js" integrity="sha384-KJ3o2DKtIkvYIK3UENzmM7KCkRr/rE9/Qpg6aAZGJwFDMVNA/GpGFF93hXpG5KkN" crossorigin="anonymous"></script>
+    <script>window.jQuery || document.write('<script src="/static/assets/js/vendor/jquery-slim.min.js"><\/script>')</script>
+    <script src="/static/assets/js/vendor/popper.min.js"></script>-->
+    <script src="/static/dist/js/bootstrap.min.js"></script>
+  </body>
+</html>
