@@ -55,6 +55,15 @@
         socket.on("update_server_status", function(msg){
             var sys_status = document.getElementById("system_status");
             sys_status.innerHTML = msg.data;
+
+            if(msg.data == "RUNNING"){
+              document.getElementById("start_server_button").disabled = true;
+              document.getElementById("stop_server_button").disabled = false;
+            }
+            else{
+              document.getElementById("start_server_button").disabled = false;
+              document.getElementById("stop_server_button").disabled = true;
+            }
         });
             
         // Event to handle the server requesting
@@ -166,7 +175,13 @@
         <h3 class="mt-5">System Status</h3>
         <div class="container">
           <p id="system_status">{{ server_status }}</p>
-          <input type="button" class="btn btn-primary" value="Start Server" id="start_server_button">
+          {% if server_status == "RUNNING" %}
+          <input type="button" class="btn btn-primary" value="Start Server" id="start_server_button" disabled="true">
+            <input type="button" class="btn btn-primary" value="Stop Server" id="stop_server_button">
+          {% else %}
+            <input type="button" class="btn btn-primary" value="Start Server" id="start_server_button">
+            <input type="button" class="btn btn-primary" value="Stop Server" id="stop_server_button" disabled="true">
+          {% endif %}
         </div>
       </div>
 

@@ -107,6 +107,7 @@ def update_ip_assignment(_mac_address, _ip_address):
         )
 
 def set_server_status(status):
+    global server_status
     if server_status != status:
         server_status = status
 
@@ -117,7 +118,6 @@ def set_server_status(status):
 
 def background_thread():
     
-    global server_status
     global relations
     global requests
 
