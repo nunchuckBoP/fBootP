@@ -4,6 +4,8 @@ from flask import Flask, render_template, session, request, \
 from flask_socketio import SocketIO, emit, disconnect
 import random
 from time import sleep
+
+from socketio import server
 from cDhcp import SyncDhcpServer
 from redist import pydhcplib
 from redist.pydhcplib.type_ipv4 import ipv4
@@ -27,6 +29,7 @@ app.config['SECRET_KEY'] = 'secret!'
 socketio = SocketIO(app, async_mode=None)
 thread = None
 thread_lock = Lock()
+server_running = False
 
 def get_mac_in_table(mac_address, table):
     table_row_count = len(table)
@@ -120,10 +123,10 @@ def background_thread():
     
     global relations
     global requests
+    global server_running
 
     socketio.emit("server_event", {"data":"Starting DHCP Server..."})
     
-    dhcp_server_created = False
     server_options = {
         'client_listen_port':"68",
         'server_listen_port': "67",
@@ -131,7 +134,7 @@ def background_thread():
     }
     try:
         dhcp = SyncDhcpServer(**server_options)
-        dhcp_server_created = True
+        server_running = True
         set_server_status("RUNNING")
     except Exception as ex:
         print("ERROR: %s" % ex)
@@ -141,7 +144,9 @@ def background_thread():
             {'data': 'ERROR ON DHCP SERVER CREATION - %s \nTraceback:\n%s' % (ex, "\n".join(traceback.format_stack()))}
         )
     
-    while dhcp_server_created:
+    listening_printed = False
+
+    while server_running:
 
         # update the server status again, so we can get this
         # every time
@@ -149,33 +154,35 @@ def background_thread():
 
         # sleep for ten seconds. Only valid in 
         # test mode
-        socketio.emit("server_event", {"data":"Listening for DHCP Packets..."})
+        if not listening_printed:
+            socketio.emit("server_event", {"data":"Listening for DHCP Packets..."})
+            listening_printed = True
         
         ##############################################
         # Get the next dhcp packet. This is a blocking
         # call.
         ##############################################
-        packet = dhcp.GetNextDhcpPacket(timeout=60) # 60 minutes?
+        packet = dhcp.GetNextDhcpPacket(timeout=10) # 10 seconds?
 
         if packet is not None:
 
             if packet.IsDhcpDiscoverPacket():
                 # DHCP discover, device is sending out messages
                 # requesting a DHCP server provide an ip address
+                discover_packet = packet
 
                 # if the mac is in the table, create and send the
                 # DHCP offer message
-                print("PACKET = %s" % packet.str())
-                discover_packet = packet.CreateDhcpOfferPacketFrom(packet)
-                socketio.emit("server_event", {"data":"Received DHCP Packet from MAC address %s" % packet.GetMacAddressString()})
+                print("DISCOVER PACKET = %s" % discover_packet.str())
+                socketio.emit("server_event", {"data":"Received DHCP Packet from MAC address %s" % discover_packet.GetMacAddressString()})
 
                 # update the request table and send out update socket
                 # message for the browser to update the table
-                update_request_count(packet.GetMacAddressString())
+                update_request_count(discover_packet.GetMacAddressString())
 
                 # check and see if the mac address is in the relations 
                 # dictionary.
-                result = get_mac_in_table(packet.GetMacAddressString(), relations)
+                result = get_mac_in_table(discover_packet.GetMacAddressString(), relations)
                 if result:
                     row_number = result['row']
                     data = relations[row_number]
@@ -185,36 +192,62 @@ def background_thread():
                     # SEND OUT DHCP MESSAGE TO THE MAC
                     #       MAC ADDRESS AND ASSIGN THE IP
                     #########################################
-                    _ip = ipv4(new_ip)                
-                    dhcp.SendDhcpPacketTo(discover_packet, str(_ip), 67)
 
-                    # add the mac address to the pending ip assignments
-                    pending_assignments[packet.GetMacAddressString()] = str(_ip)
+                    # converts the packet to an offer packet
+                    packet.CreateDhcpOfferPacketFrom(discover_packet)
+
+                    # sets the offered ip address value
+                    print("new ip: %s" % new_ip)
+                    _ip = ipv4(new_ip)
+
+                    # sets the packet siaddr option to offer the client
+                    # the ip address
+                    _suc = packet.SetOption('yiaddr', _ip)
+                    
+                    # print the packet
+                    print("DHCP OFFER PACKET = %s" % packet.str())
+
+                    if _suc:                   # sends the packet
+                        dhcp.SendDhcpPacketTo(packet, "", 67)
+
+                        # add the mac address to the pending ip assignments
+                        pending_assignments[packet.GetMacAddressString()] = str(_ip)
                 # end if
 
             elif packet.IsDhcpRequestPacket():
-                
+                print("REQUEST PACKET = %s" % packet.str())
                 if packet.GetMacAddressString() in pending_assignments:
+
+                    request_packet = packet
+
                     # get pending ip address
-                    _pending_ip = pending_assignments[packet.GetMacAddressString()]
+                    _pending_ip = ipv4(pending_assignments[packet.GetMacAddressString()])
 
-                    dhcp_ack_packet = packet.CreateDhcpAckPacketFrom(packet)
-                    dhcp.SendDhcpPacketTo(dhcp_ack_packet, _pending_ip, 67)
+                    # check if the packet address is the same as what is expected
+                    _requested_ip = ipv4(request_packet.GetOption('siaddr'))
 
-                    # update the tables
-                    update_ip_assignment(packet.GetMacAddressString(), _pending_ip)
+                    if _pending_ip.str() == _requested_ip.str():
 
-                    # pop the ip off of the pending address
-                    pending_assignments.pop(packet.GetMacAddressString())
+                        packet.CreateDhcpAckPacketFrom(request_packet)
+                        dhcp.SendDhcpPacketTo(packet, '', 67)
+
+                        # update the tables
+                        update_ip_assignment(packet.GetMacAddressString(), _pending_ip)
+
+                        # pop the ip off of the pending address
+                        pending_assignments.pop(packet.GetMacAddressString())
+                    else:
+                        # if the requested IP address does not match, send back an 
+                        # not acknowledged packet.
+                        packet.CreateDhcpNackPacketFrom(request_packet)
+                        dhcp.SendDhcpPacketTo(packet, '', 67)
 
             else:
-                print("Unsupported or ignored DHCP packet.")
-                print(str(packet))
+                print("OTHER PACKET = %s" % packet.str())
 
         else: # if dhcp packet is None
-            pass
-        # end 
-
+            continue
+        # end
     # end while loop
 # end background thread
 
@@ -234,9 +267,37 @@ def connect():
 @socketio.event
 def start_server(msg):
     global thread
-    with thread_lock:
-        if thread is None:
-            thread = socketio.start_background_task(background_thread)
+    
+    print("Aquiring thread lock.")
+    thread_lock.acquire()
+    
+    if thread is None:
+        thread = socketio.start_background_task(background_thread)
+
+@socketio.event
+def stop_server(msg):
+    
+    global server_running
+    global thread
+
+    server_running = False
+
+    # trigger stopping event tigger
+    socketio.emit(
+        "server_stopping", {"data":None}
+    )
+    set_server_status("STOPPING (COULD TAKE UP TO 10 SECONDS)")
+
+    #print("Joining thread.")
+    thread.join()
+
+    thread_lock.release()
+    thread = None
+
+    socketio.emit(
+        "server_stopped",{'data':None}
+    )
+    set_server_status("STOPPED")
 
 @socketio.event
 def disconnect():
