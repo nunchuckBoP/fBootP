@@ -65,6 +65,11 @@
               document.getElementById("stop_server_button").disabled = true;
             }
         });
+
+        socket.on('server_stopping', function(){
+            document.getElementById("start_server_button").disabled = false;
+            document.getElementById("stop_server_button").disabled = false;
+        });
             
         // Event to handle the server requesting
         // that the table should be updated.
@@ -142,6 +147,9 @@
         });
         $('#start_server_button').click(function(){
             socket.emit("start_server", {});
+        });
+        $('#stop_server_button').click(function(){
+          socket.emit("stop_server", {});
         });
       });
     </script>
